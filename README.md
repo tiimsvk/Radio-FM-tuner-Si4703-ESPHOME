@@ -1,6 +1,6 @@
 # Radio-FM-tuner-Si4703-ESPHOME
 config yaml:
-external_components:
+```external_components:
   - source: github://tiimsvk/Radio-FM-tuner-Si4703-ESPHOME@main
     components: [si4703_fm]
 
@@ -30,4 +30,4 @@ sensor:
     name: "FM RSSI"
     id: fm_rssi
     accuracy_decimals: 0
-    si4703_fm_id: fm_tuner
+    si4703_fm_id: fm_tuner```

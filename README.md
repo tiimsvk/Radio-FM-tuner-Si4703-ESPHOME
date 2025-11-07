@@ -1,5 +1,6 @@
 # Radio-FM-tuner-Si4703-ESPHOME
 in development add more settings later  
+![Si4703 modul](Si4703_module.jpg)
 Config yaml:
 ```external_components:
   - source: github://tiimsvk/Radio-FM-tuner-Si4703-ESPHOME@main

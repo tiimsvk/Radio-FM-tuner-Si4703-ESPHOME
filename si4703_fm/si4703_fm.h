@@ -4,11 +4,8 @@
 #include "esphome/core/hal.h"
 #include "esphome/components/i2c/i2c.h"
 #include "esphome/components/number/number.h"
+#include "esphome/components/switch/switch.h"
 #include "esphome/components/sensor/sensor.h" 
-
-// Aby sme predišli viacnásobnej inklúzii
-#ifndef ESPHOME_SI4703_FM_H
-#define ESPHOME_SI4703_FM_H
 
 namespace esphome {
 namespace si4703_fm {
@@ -32,15 +29,35 @@ static const uint16_t STC = (1 << 14); // Seek/Tune Complete
 
 class Si4703FM; // Predbežná deklarácia
 
+class Si4703PowerSwitch : public switch_::Switch, public Component {
+public:
+  Si4703PowerSwitch(Si4703FM *parent) : parent_(parent) {}
+  void write_state(bool state) override;
+  // Neimplementujeme setup ani loop, spoliehame sa na parenta
+  
+protected:
+  Si4703FM *parent_;
+};
+
 // --- Trieda pre Number (Frequency) ---
-// Musí dediť od Component, aby mala setup()
 class Si4703Frequency : public number::Number, public Component {
 public:
   Si4703Frequency(Si4703FM *parent) : parent_(parent) {}
-  void setup() override; // Na nastavenie počiatočnej hodnoty
+  void setup() override;
   float get_setup_priority() const override { return setup_priority::LATE; }
 protected:
-  void control(float value) override; // Volá sa pri zmene z HA
+  void control(float value) override;
+  Si4703FM *parent_;
+};
+
+// --- NOVÁ: Trieda pre Number (Volume) ---
+class Si4703Volume : public number::Number, public Component {
+public:
+  Si4703Volume(Si4703FM *parent) : parent_(parent) {}
+  void setup() override;
+  float get_setup_priority() const override { return setup_priority::LATE; }
+protected:
+  void control(float value) override;
   Si4703FM *parent_;
 };
 
@@ -54,18 +71,26 @@ public:
   void loop() override;
   float get_setup_priority() const override { return setup_priority::BUS; }
 
-  // Funkcia na prepojenie s Number entitou
+  // Settery pre prepojenie entít
   void set_frequency_number(Si4703Frequency *freq_num) { this->frequency_number_ = freq_num; }
-
-  // NOVÉ: Funkcia na prepojenie so Sensor entitou (RSSI)
   void set_rssi_sensor(sensor::Sensor *rssi_sensor) { this->rssi_sensor_ = rssi_sensor; }
+  void set_volume_number(Si4703Volume *vol_num) { this->volume_number_ = vol_num; }
+  void set_power_switch(Si4703PowerSwitch *power_sw) { this->power_switch_ = power_sw; }
+  
+  // Interval aktualizácie
+  void set_update_interval(uint32_t update_interval) { this->update_interval_ = update_interval; }
 
-  // Verejné funkcie volané z Number entity
+  // Verejné funkcie pre entity
   void set_channel_from_float(float freq_mhz);
   float get_current_frequency_mhz();
-  
-  // NOVÉ: Funkcia na čítanie RSSI
   float get_rssi();
+  bool set_volume(uint8_t volume); // Nové
+  uint8_t get_volume(); // Nové
+  
+  bool turn_on();
+  bool turn_off();
+
+  bool read_registers();
 
 protected:
   GPIOPin *reset_pin_;
@@ -73,23 +98,23 @@ protected:
 
   uint16_t registers_[16] = {0};
 
+  // Pointers na entity
   Si4703Frequency *frequency_number_ = nullptr;
-  // NOVÉ: Pointer na RSSI senzor
   sensor::Sensor *rssi_sensor_{nullptr}; 
+  Si4703Volume *volume_number_ = nullptr; // Nové
+  Si4703PowerSwitch *power_switch_ = nullptr;
   
+  uint32_t update_interval_ = 2000; // Predvolená hodnota
   uint32_t last_update_ = 0;
-  static const uint32_t UPDATE_INTERVAL_MS = 2000;
 
   // Pomocné funkcie
   bool si4703_init();
-  bool read_registers();
-  bool update_all_registers(); // Zmenené z update_register
+  
+  bool update_all_registers();
   bool tune_to_channel(uint16_t channel_val);
   uint16_t get_channel_value();
-  void wait_for_stc();
+  // wait_for_stc() už nepoužívame, spoliehame sa na pevný delay
 };
 
 }  // namespace si4703_fm
 }  // namespace esphome
-
-#endif // ESPHOME_SI4703_FM_H

@@ -6,53 +6,76 @@ from esphome.const import (
     CONF_STEP, CONF_MIN_VALUE, CONF_MAX_VALUE, CONF_INITIAL_VALUE,
     CONF_OPTIMISTIC,
 )
-# Importujeme hlavn˙ triedu z __init__.py
-from . import Si4703FM, si4703_fm_ns, CONF_SI4703_FM_ID
+# Importujeme hlavn√© triedy z __init__.py
+from . import Si4703FM, Si4703Frequency, Si4703Volume, si4703_fm_ns, CONF_SI4703_FM_ID
 
-# Definujeme jednotky a ikony
-UNIT_MEGHERTZ = "MHz" 
-ICON_RADIATOR_HEATER = "mdi:radio-tower"
+# Definujeme kƒæ√∫ƒçe, ktor√© hƒæad√°me v YAML
+CONF_NUMBER_FREQUENCY = "number_frequency"
+CONF_NUMBER_VOLUME = "number_volume"
 
-# Definujeme triedu pre t˙to platformu
-Si4703Frequency = si4703_fm_ns.class_("Si4703Frequency", number.Number, cg.Component)
-
-# Toto je schÈma pre platformu number:
-CONFIG_SCHEMA = number.NUMBER_SCHEMA.extend({
+# --- Sch√©ma pre Frekvenciu ---
+FREQUENCY_SCHEMA = number.NUMBER_SCHEMA.extend({
     cv.GenerateID(): cv.declare_id(Si4703Frequency),
-    cv.Required(CONF_SI4703_FM_ID): cv.use_id(Si4703FM), # Prepojenie na hlavn˝ hub
-    
-    # äpecifickÈ nastavenia pre frekvenciu
     cv.Optional(CONF_MIN_VALUE, default=87.5): cv.float_,
     cv.Optional(CONF_MAX_VALUE, default=108.0): cv.float_,
     cv.Optional(CONF_STEP, default=0.1): cv.float_,
-    cv.Optional(CONF_INITIAL_VALUE, default=98.0): cv.float_,
+    cv.Optional(CONF_INITIAL_VALUE, default=104.8): cv.float_,
     cv.Optional(CONF_OPTIMISTIC, default=True): cv.boolean,
-    cv.Optional(CONF_UNIT_OF_MEASUREMENT, default=UNIT_MEGHERTZ): cv.string,
-    cv.Optional(CONF_ICON, default=ICON_RADIATOR_HEATER): cv.icon,
-    cv.Optional(CONF_MODE, default="BOX"): cv.enum(
-      number.NUMBER_MODES, 
-      upper=True
-    ),
+    cv.Optional(CONF_UNIT_OF_MEASUREMENT, default="MHz"): cv.string,
+    cv.Optional(CONF_ICON, default="mdi:radio-tower"): cv.icon,
+    cv.Optional(CONF_MODE, default="BOX"): cv.enum(number.NUMBER_MODES, upper=True),
 }).extend(cv.COMPONENT_SCHEMA)
 
-# Nov· (spr·vna) verzia
+# --- Sch√©ma pre Hlasitos≈• ---
+VOLUME_SCHEMA = number.NUMBER_SCHEMA.extend({
+    cv.GenerateID(): cv.declare_id(Si4703Volume),
+    cv.Optional(CONF_MIN_VALUE, default=0.0): cv.float_,
+    cv.Optional(CONF_MAX_VALUE, default=15.0): cv.float_, # Max Si4703 je 15
+    cv.Optional(CONF_STEP, default=1.0): cv.float_,
+    cv.Optional(CONF_INITIAL_VALUE, default=8.0): cv.float_,
+    cv.Optional(CONF_OPTIMISTIC, default=True): cv.boolean,
+    cv.Optional(CONF_ICON, default="mdi:volume-medium"): cv.icon,
+    cv.Optional(CONF_MODE, default="SLIDER"): cv.enum(number.NUMBER_MODES, upper=True),
+}).extend(cv.COMPONENT_SCHEMA)
+
+# --- Hlavn√° sch√©ma pre platformu 'number.si4703_fm' ---
+CONFIG_SCHEMA = cv.Schema({
+    # Povinn√Ω odkaz na hlavn√Ω hub
+    cv.Required(CONF_SI4703_FM_ID): cv.use_id(Si4703FM),
+    
+    # Voliteƒæn√©: Defin√≠cia frekvencie
+    cv.Optional(CONF_NUMBER_FREQUENCY): FREQUENCY_SCHEMA,
+    
+    # Voliteƒæn√©: Defin√≠cia hlasitosti
+    cv.Optional(CONF_NUMBER_VOLUME): VOLUME_SCHEMA,
+})
+
 async def to_code(config):
-    # 1. Vytvorenie Number entity
-    var = cg.new_Pvariable(config[CONF_ID], await cg.get_variable(config[CONF_SI4703_FM_ID]))
-    
-    # 2. Registr·cia Number entity (pouûÌvame fix z predch·dzaj˙ceho kroku)
-    await cg.register_component(var, config) 
-    await number.register_number(
-        var, 
-        config, 
-        min_value=config[CONF_MIN_VALUE], 
-        max_value=config[CONF_MAX_VALUE], 
-        step=config[CONF_STEP]
-    ) 
-    
-    # 3. ZÌskanie odkazu na hlavn˝ komponent (hub) a prepojenie
-    # ZMENA: PO»KAJ NA V›SLEDOK cg.get_variable()
-    hub_var = await cg.get_variable(config[CONF_SI4703_FM_ID])
-    
-    # Teraz hub_var uû nie je coroutine, ale C++ Pvariable
-    cg.add(hub_var.set_frequency_number(var))
+    # Z√≠skame odkaz na hlavn√Ω hub
+    hub = await cg.get_variable(config[CONF_SI4703_FM_ID])
+
+    # Skontrolujeme, ƒçi je definovan√° frekvencia
+    if CONF_NUMBER_FREQUENCY in config:
+        conf = config[CONF_NUMBER_FREQUENCY]
+        var = cg.new_Pvariable(conf[CONF_ID], hub)
+        await cg.register_component(var, conf)
+        await number.register_number(
+            var, conf, 
+            min_value=conf[CONF_MIN_VALUE], 
+            max_value=conf[CONF_MAX_VALUE], 
+            step=conf[CONF_STEP]
+        )
+        cg.add(hub.set_frequency_number(var))
+
+    # Skontrolujeme, ƒçi je definovan√° hlasitos≈•
+    if CONF_NUMBER_VOLUME in config:
+        conf = config[CONF_NUMBER_VOLUME]
+        var = cg.new_Pvariable(conf[CONF_ID], hub)
+        await cg.register_component(var, conf)
+        await number.register_number(
+            var, conf, 
+            min_value=conf[CONF_MIN_VALUE], 
+            max_value=conf[CONF_MAX_VALUE], 
+            step=conf[CONF_STEP]
+        )
+        cg.add(hub.set_volume_number(var))

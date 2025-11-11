@@ -11,7 +11,7 @@ i2c:
   scl: GPIO1
   scan: true
   
-si4703_fm:
+ssi4703_fm:
   id: fm_tuner
   address: 0x10 
   reset_pin: GPIO4    
@@ -29,7 +29,7 @@ number:
       optimistic: true
     
     number_volume:
-      name: "FM Rádiová Hlasitosť"
+      name: "Volume"
       min_value: 0
       max_value: 15
       step: 1
@@ -38,14 +38,52 @@ number:
     
 sensor:
   - platform: si4703_fm
-    name: "FM RSSI"
-    id: fm_rssi
-    accuracy_decimals: 0
-    si4703_fm_id: fm_tuner
+    si4703_fm_id: fm_tuner # Uistite sa, že toto ID sedí s vaším hlavným si4703_fm blokom
+
+    # Pôvodný RSSI senzor
+    rssi:
+      name: "FM RSSI"
+      id: fm_rssi
+      
+    # NOVÉ: SNR Senzor
+    snr:
+      name: "FM SNR"
+      id: fm_snr
+      
+    # dev sensor: BLER A Senzor (Chybovosť Bloku A)
+    bler_a:
+      name: "FM BLER A"
+      id: fm_bler_a
+      
+    # dev snesor: BLER D Senzor (Chybovosť Bloku D)
+    bler_d:
+      name: "FM BLER D"
+      id: fm_bler_d
 
 switch:
   - platform: si4703_fm
     si4703_fm_id: fm_tuner
     power_switch:
       name: "FM Rádio Power"
-      id: fm_power_switch```
+      id: fm_power_switch
+    mute_switch:
+      name: "Rádio Soft Mute"
+      id: radio_mute_switch
+      icon: mdi:volume-off
+    stereo_mono_switch:
+      name: "Režim Mono"
+      icon: mdi:surround-sound-2-0
+
+text_sensor:
+  - platform: si4703_fm
+    si4703_fm_id: fm_tuner # ID vášho hlavného hubu
+    rds_text:
+      name: "FM Rádio Text"
+      id: fm_rds_text
+      icon: mdi:home-assistant
+      
+    rds_ps:
+      name: "FM Názov Stanice"
+      id: fm_rds_ps
+      icon: mdi:radio
+```

@@ -1,7 +1,7 @@
 import esphome.codegen as cg
 import esphome.config_validation as cv
 from esphome import pins
-from esphome.components import i2c, number, sensor, switch
+from esphome.components import i2c, number, sensor, switch, text_sensor
 from esphome.const import (
     CONF_ID, 
     CONF_ADDRESS, 
@@ -10,7 +10,7 @@ from esphome.const import (
 
 DEPENDENCIES = ["i2c"]
 # Povieme ESPHome, aby hľadalo number.py a sensor.py
-AUTO_LOAD = ["number", "sensor", "switch"] 
+AUTO_LOAD = ["number", "sensor", "switch", "text_sensor"] 
 
 si4703_fm_ns = cg.esphome_ns.namespace("si4703_fm")
 
@@ -19,13 +19,14 @@ Si4703FM = si4703_fm_ns.class_("Si4703FM", cg.Component, i2c.I2CDevice)
 Si4703Frequency = si4703_fm_ns.class_("Si4703Frequency", cg.Component, number.Number)
 Si4703Volume = si4703_fm_ns.class_("Si4703Volume", cg.Component, number.Number)
 Si4703PowerSwitch = si4703_fm_ns.class_("Si4703PowerSwitch", cg.Component, switch.Switch)
-#Si4703RssiSensor = si4703_fm_ns.class_("Si4703RssiSensor", cg.PollingComponent, sensor.Sensor)
-
+Si4703MuteSwitch = si4703_fm_ns.class_("Si4703MuteSwitch", cg.Component, switch.Switch)
+Si4703StereoMonoSwitch = si4703_fm_ns.class_("Si4703StereoMonoSwitch", cg.Component, switch.Switch)
 
 # ID pre prepojenie
 CONF_SI4703_FM_ID = "si4703_fm_id"
 CONF_RESET_PIN = "reset_pin"
 CONF_STC_INT_PIN = "stc_int_pin"
+CONF_SI4703_FM_ID = "si4703_fm_id"
 
 # Toto je schéma pre hlavný blok si4703_fm:
 CONFIG_SCHEMA = cv.Schema(

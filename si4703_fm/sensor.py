@@ -5,34 +5,84 @@ from esphome.const import (
     CONF_ID, 
     CONF_ACCURACY_DECIMALS, 
     ICON_SIGNAL,
-    #CONF_UPDATE_INTERVAL
+    ICON_GAUGE,
+    CONF_UNIT_OF_MEASUREMENT,
 )
 # Import z __init__.py
 from . import si4703_fm_ns, Si4703FM, CONF_SI4703_FM_ID
 
-# DEPENDENCIES = ['si4703_fm'] # Odstránené - spôsobuje circular dependency
+# Konštanty pre senzory
+CONF_RSSI = "rssi" # OPRAVENÉ: Použijeme "rssi" kľúč
+CONF_SNR = "snr"
+CONF_BLER_A = "bler_a"
+CONF_BLER_D = "bler_d"
 
-# Definícia schémy pre senzor RSSI
-CONFIG_SCHEMA = sensor.sensor_schema(
-    unit_of_measurement='dBµV', 
-    icon=ICON_SIGNAL,
-    accuracy_decimals=0,
-).extend({
-    cv.GenerateID(): cv.declare_id(sensor.Sensor),
-
+# Hlavná schéma pre celý modul
+CONFIG_SCHEMA = cv.Schema({
     cv.Required(CONF_SI4703_FM_ID): cv.use_id(Si4703FM),
     
-    # Senzor bude používať update_interval z hlavného hubu
-    # cv.Optional(CONF_UPDATE_INTERVAL, default='5s'): cv.positive_time_period_milliseconds,
-}).extend(cv.COMPONENT_SCHEMA) # PollingComponent tu nie je potrebný, Hub robí polling
+    # --- RSSI Senzor ---
+    cv.Optional(CONF_RSSI): sensor.sensor_schema( # OPRAVENÉ: Použitie CONF_RSSI
+        unit_of_measurement='dBµV', 
+        icon=ICON_SIGNAL,
+        accuracy_decimals=0,
+    ).extend({
+        cv.GenerateID(): cv.declare_id(sensor.Sensor),
+    }),
+    
+    # --- NOVÉ: SNR Senzor ---
+    cv.Optional(CONF_SNR): sensor.sensor_schema(
+        unit_of_measurement='dB', 
+        icon=ICON_GAUGE,
+        accuracy_decimals=0,
+    ).extend({
+        cv.GenerateID(): cv.declare_id(sensor.Sensor),
+    }),
 
-# Funkcia pre registráciu senzora
+    # --- NOVÉ: BLER A Senzor ---
+    cv.Optional(CONF_BLER_A): sensor.sensor_schema(
+        unit_of_measurement='BLER', # Block Error Rate (rozsah 0-3)
+        icon=ICON_GAUGE,
+        accuracy_decimals=0,
+    ).extend({
+        cv.GenerateID(): cv.declare_id(sensor.Sensor),
+    }),
+
+    # --- NOVÉ: BLER D Senzor ---
+    cv.Optional(CONF_BLER_D): sensor.sensor_schema(
+        unit_of_measurement='BLER', # Block Error Rate (rozsah 0-3)
+        icon=ICON_GAUGE,
+        accuracy_decimals=0,
+    ).extend({
+        cv.GenerateID(): cv.declare_id(sensor.Sensor),
+    }),
+    
+}).extend(cv.COMPONENT_SCHEMA)
+
+# Funkcia pre registráciu senzorov
 async def to_code(config):
-    # 1. Získame hub
     hub_var = await cg.get_variable(config[CONF_SI4703_FM_ID])
     
-    # 2. Vytvoríme štandardný senzor (toto nahradí new_Pvariable aj register_sensor)
-    var = await sensor.new_sensor(config)
-    
-    # 3. Pripojíme senzor k hubu
-    cg.add(hub_var.set_rssi_sensor(var))
+    # 1. OPRAVENÉ: RSSI
+    if CONF_RSSI in config:
+        conf = config[CONF_RSSI]
+        var = await sensor.new_sensor(conf)
+        cg.add(hub_var.set_rssi_sensor(var)) # set_rssi_sensor je v C++
+        
+    # 2. NOVÉ: SNR
+    if CONF_SNR in config:
+        conf = config[CONF_SNR]
+        var = await sensor.new_sensor(conf)
+        cg.add(hub_var.set_snr_sensor(var))
+
+    # 3. NOVÉ: BLER A
+    if CONF_BLER_A in config:
+        conf = config[CONF_BLER_A]
+        var = await sensor.new_sensor(conf)
+        cg.add(hub_var.set_bler_a_sensor(var))
+
+    # 4. NOVÉ: BLER D
+    if CONF_BLER_D in config:
+        conf = config[CONF_BLER_D]
+        var = await sensor.new_sensor(conf)
+        cg.add(hub_var.set_bler_d_sensor(var))

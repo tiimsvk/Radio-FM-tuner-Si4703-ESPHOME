@@ -2,7 +2,7 @@
 # SUBTITUTIONS - basic definitions and description of the device
 #-------------------------------------------
 substitutions:
-  device_name:         Radio FM
+  device_name:         radio-fm
   created_by:         "StudioTiiM 2025"
   device_description: "Custom component Si4703 FM Radio Tuner"
 

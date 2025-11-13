@@ -4,78 +4,87 @@ from esphome.components import number
 from esphome.const import (
     CONF_ID, CONF_MODE, CONF_NAME, CONF_ICON, CONF_UNIT_OF_MEASUREMENT,
     CONF_STEP, CONF_MIN_VALUE, CONF_MAX_VALUE, CONF_INITIAL_VALUE,
-    CONF_OPTIMISTIC,
+    CONF_OPTIMISTIC, CONF_RESTORE_VALUE,
 )
 # Importujeme hlavné triedy z __init__.py
-from . import Si4703FM, Si4703Frequency, Si4703Volume, si4703_fm_ns, CONF_SI4703_FM_ID
+from . import Si4703FM, Si4703Frequency, Si4703Volume, CONF_SI4703_FM_ID
 
 # Definujeme kľúče, ktoré hľadáme v YAML
 CONF_NUMBER_FREQUENCY = "number_frequency"
 CONF_NUMBER_VOLUME = "number_volume"
 
-# --- Schéma pre Frekvenciu ---
-FREQUENCY_SCHEMA = number.NUMBER_SCHEMA.extend({
-    cv.GenerateID(): cv.declare_id(Si4703Frequency),
-    cv.Optional(CONF_MIN_VALUE, default=87.5): cv.float_,
-    cv.Optional(CONF_MAX_VALUE, default=108.0): cv.float_,
-    cv.Optional(CONF_STEP, default=0.1): cv.float_,
-    cv.Optional(CONF_INITIAL_VALUE, default=104.8): cv.float_,
-    cv.Optional(CONF_OPTIMISTIC, default=True): cv.boolean,
-    cv.Optional(CONF_UNIT_OF_MEASUREMENT, default="MHz"): cv.string,
-    cv.Optional(CONF_ICON, default="mdi:radio-tower"): cv.icon,
-    cv.Optional(CONF_MODE, default="BOX"): cv.enum(number.NUMBER_MODES, upper=True),
-}).extend(cv.COMPONENT_SCHEMA)
+# --- Schéma pre Frekvenciu (Sub-komponent) ---
+FREQUENCY_SCHEMA = number.number_schema(Si4703Frequency).extend(
+    {
+        cv.Optional(CONF_MIN_VALUE, default=87.5): cv.float_,
+        cv.Optional(CONF_MAX_VALUE, default=108.0): cv.float_,
+        cv.Optional(CONF_STEP, default=0.1): cv.float_,
+        cv.Optional(CONF_INITIAL_VALUE, default=104.8): cv.float_,
+        cv.Optional(CONF_OPTIMISTIC, default=True): cv.boolean,
+        cv.Optional(CONF_RESTORE_VALUE, default=True): cv.boolean,
+        cv.Optional(CONF_UNIT_OF_MEASUREMENT, default="MHz"): cv.string,
+        cv.Optional(CONF_ICON, default="mdi:radio-tower"): cv.icon,
+        cv.Optional(CONF_MODE, default="BOX"): cv.enum(number.NUMBER_MODES, upper=True),
+    }
+).extend(cv.COMPONENT_SCHEMA)
 
-# --- Schéma pre Hlasitosť ---
-VOLUME_SCHEMA = number.NUMBER_SCHEMA.extend({
-    cv.GenerateID(): cv.declare_id(Si4703Volume),
-    cv.Optional(CONF_MIN_VALUE, default=0.0): cv.float_,
-    cv.Optional(CONF_MAX_VALUE, default=15.0): cv.float_, # Max Si4703 je 15
-    cv.Optional(CONF_STEP, default=1.0): cv.float_,
-    cv.Optional(CONF_INITIAL_VALUE, default=8.0): cv.float_,
-    cv.Optional(CONF_OPTIMISTIC, default=True): cv.boolean,
-    cv.Optional(CONF_ICON, default="mdi:volume-medium"): cv.icon,
-    cv.Optional(CONF_MODE, default="SLIDER"): cv.enum(number.NUMBER_MODES, upper=True),
-}).extend(cv.COMPONENT_SCHEMA)
+# --- Schéma pre Hlasitosť (Sub-komponent) ---
+VOLUME_SCHEMA = number.number_schema(Si4703Volume).extend(
+    {
+        cv.Optional(CONF_MIN_VALUE, default=0.0): cv.float_,
+        cv.Optional(CONF_MAX_VALUE, default=15.0): cv.float_, 
+        cv.Optional(CONF_STEP, default=1.0): cv.float_,
+        cv.Optional(CONF_INITIAL_VALUE, default=8.0): cv.float_,
+        cv.Optional(CONF_OPTIMISTIC, default=True): cv.boolean,
+        cv.Optional(CONF_RESTORE_VALUE, default=True): cv.boolean,
+        cv.Optional(CONF_ICON, default="mdi:volume-medium"): cv.icon,
+        cv.Optional(CONF_MODE, default="SLIDER"): cv.enum(number.NUMBER_MODES, upper=True),
+    }
+).extend(cv.COMPONENT_SCHEMA)
 
 # --- Hlavná schéma pre platformu 'number.si4703_fm' ---
 CONFIG_SCHEMA = cv.Schema({
-    # Povinný odkaz na hlavný hub
+    # ID hubu je teraz povinné
     cv.Required(CONF_SI4703_FM_ID): cv.use_id(Si4703FM),
     
-    # Voliteľné: Definícia frekvencie
-    cv.Optional(CONF_NUMBER_FREQUENCY): FREQUENCY_SCHEMA,
+    cv.Optional(CONF_NUMBER_FREQUENCY): cv.maybe_simple_value(
+        FREQUENCY_SCHEMA, key=CONF_NAME
+    ),
     
-    # Voliteľné: Definícia hlasitosti
-    cv.Optional(CONF_NUMBER_VOLUME): VOLUME_SCHEMA,
-})
+    cv.Optional(CONF_NUMBER_VOLUME): cv.maybe_simple_value(
+        VOLUME_SCHEMA, key=CONF_NAME
+    ),
+}).extend(cv.COMPONENT_SCHEMA)
+
 
 async def to_code(config):
-    # Získame odkaz na hlavný hub
-    hub = await cg.get_variable(config[CONF_SI4703_FM_ID])
+    # OPRAVA: Získanie 'hub' premennej priamo z ID v konfigurácii
+    hub_var = await cg.get_variable(config[CONF_SI4703_FM_ID])
 
-    # Skontrolujeme, či je definovaná frekvencia
     if CONF_NUMBER_FREQUENCY in config:
         conf = config[CONF_NUMBER_FREQUENCY]
-        var = cg.new_Pvariable(conf[CONF_ID], hub)
-        await cg.register_component(var, conf)
+        # Používame new_Pvariable s hub_var ako rodičom (parent)
+        var = cg.new_Pvariable(conf[CONF_ID], hub_var)
+        
         await number.register_number(
             var, conf, 
             min_value=conf[CONF_MIN_VALUE], 
             max_value=conf[CONF_MAX_VALUE], 
             step=conf[CONF_STEP]
         )
-        cg.add(hub.set_frequency_number(var))
+        
+        cg.add(hub_var.set_frequency_number(var))
 
-    # Skontrolujeme, či je definovaná hlasitosť
     if CONF_NUMBER_VOLUME in config:
         conf = config[CONF_NUMBER_VOLUME]
-        var = cg.new_Pvariable(conf[CONF_ID], hub)
-        await cg.register_component(var, conf)
+        # Používame new_Pvariable s hub_var ako rodičom (parent)
+        var = cg.new_Pvariable(conf[CONF_ID], hub_var)
+        
         await number.register_number(
             var, conf, 
             min_value=conf[CONF_MIN_VALUE], 
             max_value=conf[CONF_MAX_VALUE], 
             step=conf[CONF_STEP]
         )
-        cg.add(hub.set_volume_number(var))
+        
+        cg.add(hub_var.set_volume_number(var))

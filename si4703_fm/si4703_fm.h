@@ -149,7 +149,7 @@ class Si4703SeekDownButton : public button::Button, public Component {
 
 class Si4703FM : public Component, public i2c::I2CDevice {
 public:
-  Si4703FM(i2c::I2CBus *parent_bus, GPIOPin *reset_pin, GPIOPin *stc_int_pin);
+  Si4703FM(i2c::I2CBus *parent_bus, GPIOPin *reset_pin, GPIOPin *stc_int_pin = nullptr);
   
   void setup() override;
   void loop() override;

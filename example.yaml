@@ -1,88 +1,224 @@
-i2c:
-  sda: GPIO0
-  scl: GPIO1
-  scan: true
-  
-si4703_fm:
-  id: fm_tuner
-  address: 0x10 
-  reset_pin: GPIO4    
-  stc_int_pin: GPIO3 
+#-------------------------------------------
+# SUBTITUTIONS - basic definitions and description of the device
+#-------------------------------------------
+substitutions:
+  device_name:         Radio FM
+  created_by:         "StudioTiiM 2025"
+  device_description: "Custom component Si4703 FM Radio Tuner"
 
+#-------------------------------------------
+# PROTOCOLS AND HW
+#-------------------------------------------
+ # ----- PROTOCOLS AND HW PINS -----
+  # I2C
+  i2c_sda_pin:  GPIO00
+  i2c_scl_pin:  GPIO01
+  si4703_rst:   GPIO04
+  #si4703_sen: not use
+  
+ # ----- PROTOCOLS SETTINGS -----
+i2c:
+  sda:         "$i2c_sda_pin"
+  scl:         "$i2c_scl_pin"
+  scan:         true
+
+#-------------------------------------------
+# ESPHOME PLATFORM SETTINGS
+#-------------------------------------------
+esphome:
+  name:       "$device_name"
+
+#-------------------------------------------
+# ESP MCU SETTINGS
+#-------------------------------------------
+esp32:
+  board:       esp32-c3-devkitm-1
+  variant:     esp32c3
+  framework:   
+    type:      esp-idf
+    
+#-------------------------------------------
+# LOGGER AND DEBUG
+#-------------------------------------------
+logger:
+
+#-------------------------------------------
+# API AND HTTP
+#-------------------------------------------
+api:
+captive_portal:
+
+#-------------------------------------------
+# ETHERNET
+#-------------------------------------------
+ota:
+  platform:    esphome
+wifi:          
+  ssid:        !secret wifi_ssid
+  password:    !secret wifi_password
+  manual_ip:
+    static_ip:  192.168.31.54
+    gateway:    192.168.31.1
+    subnet:     255.255.255.0
+ 
+#-------------------------------------------
+# EXTERNAL COMPONENT
+#-------------------------------------------
+external_components:
+  #- source:
+  #    type: local
+  #    path: /mnt/network_config/custom_component
+  #  components: [si4703_fm]
+  - source: github://tiimsvk/Radio-FM-tuner-Si4703-ESPHOME@main
+    components: [si4703_fm]
+
+#-------------------------------------------
+# HW SETTINGS
+#-------------------------------------------
+si4703_fm:
+  id:          fm_tuner
+  address:     0x10 
+  reset_pin:   $si4703_rst    
+  #stc_int_pin: GPIO3 
+
+#-------------------------------------------
+# SENSORS
+#-------------------------------------------
+sensor:
+  - platform:     si4703_fm
+    si4703_fm_id: fm_tuner
+    rssi:
+      name:      "FM RSSI"
+      id:         fm_rssi
+    # SNR sensor is not working properly the hw version does not support it can display 0, 4 or 7 depending on the signal strength
+    #snr: 
+    #  name:     "FM SNR"
+    #  id:        fm_snr
+    pty:
+       name:    "FM Radio PTY Code"
+       id:       radio_pty_code
+       internal: true
+       on_value:
+         then:
+           component.update: radio_pty_name
+
+#-------------------------------------------
+# BINARY SENSORS
+#-------------------------------------------
+binary_sensor:
+  - platform:     si4703_fm
+    si4703_fm_id: fm_tuner
+    stereo_indicator:
+      name:      "Stereo"
+      icon:       mdi:surround-sound-2-0
+    tp_indicator:
+      name:      "Traffic Program"
+      icon:       mdi:road-variant
+    ta_indicator:
+      name:      "Traffic Announcement"
+      icon:       mdi:car-emergency
+
+#-------------------------------------------
+# NUMBERS
+#-------------------------------------------    
 number:
-  - platform: si4703_fm
+  - platform:     si4703_fm
     si4703_fm_id: fm_tuner
     number_frequency:
-      name: "FM Frequency"
-      id: fm_frq
-      min_value: 87.5
-      max_value: 108.0
-      step: 0.1
+      name:      "FM Frequency"
+      id:         fm_frq
+      min_value:  87.5
+      max_value:  108.0
+      step:       0.1
       optimistic: true
     
     number_volume:
-      name: "Volume"
-      min_value: 0
-      max_value: 15
-      step: 1
-      # Nastavenie na slider
-      mode: SLIDER
-    
-sensor:
-  - platform: si4703_fm
-    si4703_fm_id: fm_tuner # Uistite sa, že toto ID sedí s vaším hlavným si4703_fm blokom
+      name:      "Volume"
+      min_value:  0
+      max_value:  15
+      step:       1
+      mode:       SLIDER
 
-    # Pôvodný RSSI senzor
-    rssi:
-      name: "FM RSSI"
-      id: fm_rssi
-      
-    # NOVÉ: SNR Senzor
-    snr:
-      name: "FM SNR"
-      id: fm_snr
-      
-    # NOVÉ: BLER A Senzor (Chybovosť Bloku A)
-    bler_a:
-      name: "FM BLER A"
-      id: fm_bler_a
-      
-    # NOVÉ: BLER D Senzor (Chybovosť Bloku D)
-    bler_d:
-      name: "FM BLER D"
-      id: fm_bler_d
-
+#-------------------------------------------
+# SWITCHES
+#-------------------------------------------
 switch:
-  - platform: si4703_fm
+  - platform:     si4703_fm
     si4703_fm_id: fm_tuner
     power_switch:
-      name: "FM Rádio Power"
-      id: fm_power_switch
-    mute_switch: # <--- NOVÁ ENTITA
-      name: "Rádio Soft Mute"
-      id: radio_mute_switch
-      icon: mdi:volume-off
-    stereo_mono_switch: # <--- NOVÉ
-      name: "Režim Mono"
-      icon: mdi:surround-sound-2-0
-#button:
-#  - platform: si4703_seekup
-#    name: "FM Seek Up"
-#  - platform: si4703_seekdown
-#    name: "FM Seek Dwon"
-#binary_sensor:
-#  - platform: si4703_stereo
-#    name: "FM Stereo Prijem"
-#    
-text_sensor:
-  - platform: si4703_fm
-    si4703_fm_id: fm_tuner # ID vášho hlavného hubu
-    rds_text:
-      name: "FM Rádio Text"
-      id: fm_rds_text
-      icon: mdi:home-assistant
+      name:      "Radio Power"
+      id:         fm_power_switch
+    mute_switch:
+      name:      "Radio Mute"
+      id:         radio_mute_switch
+      icon:       mdi:volume-off
       
+#-------------------------------------------
+# BUTTONS
+#-------------------------------------------
+button:
+  - platform:     si4703_fm
+    si4703_fm_id: fm_tuner
+    seek_up:
+      name:      "Seek Up"
+    seek_down:
+      name:      "Seek Down"
+      
+#-------------------------------------------
+# TEXT SENSORS
+#------------------------------------------- 
+text_sensor:
+  - platform:     si4703_fm
+    si4703_fm_id: fm_tuner
+    rds_text:
+      name:      "Title"
+      id:         fm_rds_text
+      icon:       mdi:music
     rds_ps:
-      name: "FM Názov Stanice"
-      id: fm_rds_ps
-      icon: mdi:radio
+      name:      "Station"
+      id:         fm_rds_ps
+      icon:       mdi:radio
+    rds_ct:
+      name:      "Time"
+      icon:      "mdi:clock-check-outline"
+      
+  - platform:    template
+    name:       "Programme Type"
+    id:          radio_pty_name
+    update_interval: never
+    lambda: |-
+      int pty_code = id(radio_pty_code).state;
+      
+      // Zoznam PTY kódov (môžete si ho prispôsobiť)
+      switch (pty_code) {
+        case 0: return std::string("Žiadny/No PTY");
+        case 1: return std::string("Správy (News)");
+        case 2: return std::string("Aktuálne (Current Affairs)");
+        case 3: return std::string("Informácie (Information)");
+        case 4: return std::string("Šport (Sport)");
+        case 5: return std::string("Vzdelávanie (Education)");
+        case 6: return std::string("Dráma (Drama)");
+        case 7: return std::string("Kultúra (Culture)");
+        case 8: return std::string("Veda/Technika (Science)");
+        case 9: return std::string("Rozhovory (Talk)");
+        case 10: return std::string("Pop Music");
+        case 11: return std::string("Rock Music");
+        case 12: return std::string("Easy Listening Music");
+        case 13: return std::string("Light Classics");
+        case 14: return std::string("Serious Classics");
+        case 15: return std::string("Other Music");
+        case 16: return std::string("Počasie/Financie (Weather)");
+        case 17: return std::string("Detské (Children's)");
+        case 18: return std::string("Sociálne/Náboženské (Social)");
+        case 19: return std::string("Telefónne linky (Phone In)");
+        case 20: return std::string("Cestovanie (Travel)");
+        case 21: return std::string("Voľný čas (Leisure)");
+        case 22: return std::string("Jazz Music");
+        case 23: return std::string("Country Music");
+        case 24: return std::string("National Music");
+        case 25: return std::string("Oldies Music");
+        case 26: return std::string("Folk Music");
+        case 27: return std::string("Dokumenty (Documentary)");
+        // PTY 29-31 sú Alarmy/Núdzové
+        default: return "Ostatné / Neznáme PTY (" + to_string(pty_code) + ")";
+      }

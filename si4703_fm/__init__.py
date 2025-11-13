@@ -1,7 +1,7 @@
 import esphome.codegen as cg
 import esphome.config_validation as cv
 from esphome import pins
-from esphome.components import i2c, number, sensor, switch, text_sensor
+from esphome.components import i2c, number, sensor, switch, text_sensor, binary_sensor, button
 from esphome.const import (
     CONF_ID, 
     CONF_ADDRESS, 
@@ -10,7 +10,7 @@ from esphome.const import (
 
 DEPENDENCIES = ["i2c"]
 # Povieme ESPHome, aby hľadalo number.py a sensor.py
-AUTO_LOAD = ["number", "sensor", "switch", "text_sensor"] 
+AUTO_LOAD = ["number", "sensor", "switch", "text_sensor", "binary_sensor", "button"] 
 
 si4703_fm_ns = cg.esphome_ns.namespace("si4703_fm")
 
@@ -20,7 +20,11 @@ Si4703Frequency = si4703_fm_ns.class_("Si4703Frequency", cg.Component, number.Nu
 Si4703Volume = si4703_fm_ns.class_("Si4703Volume", cg.Component, number.Number)
 Si4703PowerSwitch = si4703_fm_ns.class_("Si4703PowerSwitch", cg.Component, switch.Switch)
 Si4703MuteSwitch = si4703_fm_ns.class_("Si4703MuteSwitch", cg.Component, switch.Switch)
-Si4703StereoMonoSwitch = si4703_fm_ns.class_("Si4703StereoMonoSwitch", cg.Component, switch.Switch)
+Si4703StereoIndicator = si4703_fm_ns.class_("Si4703StereoIndicator", cg.Component, binary_sensor.BinarySensor)
+Si4703TPIndicator = si4703_fm_ns.class_("Si4703TPIndicator", cg.Component, binary_sensor.BinarySensor)
+Si4703TAIndicator = si4703_fm_ns.class_("Si4703TAIndicator", cg.Component, binary_sensor.BinarySensor)
+Si4703SeekUpButton = si4703_fm_ns.class_("Si4703SeekUpButton", cg.Component, button.Button)
+Si4703SeekDownButton = si4703_fm_ns.class_("Si4703SeekDownButton", cg.Component, button.Button)
 
 # ID pre prepojenie
 CONF_SI4703_FM_ID = "si4703_fm_id"

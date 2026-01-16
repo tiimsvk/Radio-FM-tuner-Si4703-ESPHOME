@@ -14,6 +14,8 @@ FEATURES:
 - RSSI
 - Power
 - Mute
+- GPIO01 switch It can be connected to an amplifier for switching on and off.
+- GPIO02 switch It can be connected to an amplifier for switching on and off.
 
 ![Si4703 modul](Si4703_module.jpg)  
 Config yaml:
@@ -172,6 +174,10 @@ switch:
       name:      "Radio Mute"
       id:         radio_mute_switch
       icon:       mdi:volume-off
+    amp_switch:            
+      name: "GPIO1"
+    gpio2_switch:          
+      name: "GPIO2"
       
 #-------------------------------------------
 # BUTTONS

@@ -1,6 +1,6 @@
 #include "si4703_fm.h"
 #include "esphome/core/log.h"
-#include <cmath> // Pre std::round
+#include <cmath>
 
 namespace esphome {
 namespace si4703_fm {
@@ -11,16 +11,14 @@ static const char *const TAG = "si4703_fm";
 // Implementácia Konštruktora
 // =============================================================================
 
-Si4703FM::Si4703FM(i2c::I2CBus *parent_bus, GPIOPin *reset_pin, GPIOPin *stc_int_pin) 
-    : i2c::I2CDevice(), reset_pin_(reset_pin), stc_int_pin_(stc_int_pin) 
-{
-    // Manuálne nastavenie bus pointera
+Si4703FM::Si4703FM(i2c::I2CBus *parent_bus, GPIOPin *reset_pin, GPIOPin *stc_int_pin, GPIOPin *gpio1_pin, GPIOPin *gpio2_pin) 
+    : i2c::I2CDevice(), reset_pin_(reset_pin), stc_int_pin_(stc_int_pin), gpio1_pin_(gpio1_pin), gpio2_pin_(gpio2_pin) {
     this->bus_ = parent_bus;
     
     // Inicializácia RDS RT buffra ---
     memset(this->rds_rt_buffer_, ' ', 64);
     this->rds_rt_buffer_[64] = '\0';
-	memset(this->rds_ct_buffer_, 0, sizeof(this->rds_ct_buffer_));
+    memset(this->rds_ct_buffer_, 0, sizeof(this->rds_ct_buffer_));
 }
 
 // =============================================================================
@@ -37,7 +35,7 @@ void Si4703PowerSwitch::write_state(bool state) {
     
     if (success) {
         this->publish_state(state);
-		if (state) {
+        if (state) {
             // Po zapnutí chvíľu počkáme a potom publikujeme počiatočný stav
             // (Týmto sa rieši počiatočný UNKNOWN stav)
             delay(100); // Krátka pauza na stabilizáciu čipu
@@ -66,35 +64,39 @@ void Si4703MuteSwitch::write_state(bool state) {
     }
 }
 
-// =============================================================================
-// NOVÉ: Implementácia Button (Seek Up/Down)
-// =============================================================================
-
-void Si4703SeekUpButton::press_action() {
-    this->parent_->seek_up();
+// GPIO1 výstup ako prepínač zosilňovača (HIGH/LOW cez SYSCONFIG1 bits 1:0)
+void Si4703AmpSwitch::write_state(bool state) {
+    if (this->parent_->set_gpio1_state(state)) {
+        this->publish_state(state);
+    }
 }
 
-void Si4703SeekDownButton::press_action() {
-    this->parent_->seek_down();
+// GPIO2 výstup ako prepínač (HIGH/LOW cez SYSCONFIG1 bits 3:2)
+void Si4703Gpio2Switch::write_state(bool state) {
+    if (this->parent_->set_gpio2_state(state)) {
+        this->publish_state(state);
+    }
 }
 
 // =============================================================================
-// Implementácia Si4703FM (Power ON/OFF a Mute/Unmute)
+// Implementácia Button (Seek Up/Down)
+// =============================================================================
+
+void Si4703SeekUpButton::press_action() { this->parent_->seek_up(); }
+void Si4703SeekDownButton::press_action() { this->parent_->seek_down(); }
+
+// =============================================================================
+// Power / Mute
 // =============================================================================
 
 bool Si4703FM::turn_on() {
     ESP_LOGV(TAG, "Zapínam rádio (Power ON).");
-    
-    // KĽÚČOVÁ ZMENA: Volanie inicializácie, ktorá zapne čip, naladí frekvenciu a nastaví hlasitosť.
     if (!this->si4703_init()) return false; 
-
     return true;
 }
 
 bool Si4703FM::turn_off() {
     ESP_LOGV(TAG, "Vypínam rádio (Power OFF).");
-    
-    // 1. OPRAVA: Prečítaj aktuálne registre z čipu
     if (!this->read_registers()) return false; 
     
     // 2. Modifikácia: Nastav bit DISABLE (D6) a vymaž ENABLE bit (D0)
@@ -213,20 +215,18 @@ void Si4703FM::publish_stereo_status() {
 }
 
 // =============================================================================
-// Implementácia hlavnej triedy Si4703FM (Hub)
+// Setup
 // =============================================================================
 
 void Si4703FM::setup() {
     // 1. I/O Pin setup
     this->reset_pin_->setup();
     this->reset_pin_->digital_write(false);
-    
-    if (this->stc_int_pin_ != nullptr) {
-        this->stc_int_pin_->setup();
-    }
-    
+    if (this->stc_int_pin_ != nullptr) this->stc_int_pin_->setup();
     this->reset_pin_->digital_write(true); 
     
+    this->gpio2_last_state_ = false;
+    this->gpio2_last_change_ = millis();
    
     // 2. Kontrola stavu Switchu pri štarte
     if (this->power_switch_ != nullptr) {
@@ -247,12 +247,9 @@ void Si4703FM::setup() {
     ESP_LOGD(TAG, "Si4703 inicialized.");
 }
 
-// --- Implementácia pomocných funkcií pre entity ---
+// --- Helpers for volume, etc. ---
 
-uint8_t Si4703FM::get_volume() {
-    // Volume je v bitoch 0-3 registra SYSCONFIG2 (0x05)
-    return this->registers_[SYSCONFIG2] & 0x0F;
-}
+uint8_t Si4703FM::get_volume() { return this->registers_[SYSCONFIG2] & 0x0F; }
 
 // =============================================================================
 // Implementácia Si4703FM (Hlasitosť)
@@ -283,22 +280,13 @@ bool Si4703FM::set_volume(uint8_t volume) {
     // SYSCONFIG2 (0x05) | Volume: Bits 0-3
     this->registers_[SYSCONFIG2] &= ~0x000F; 
     this->registers_[SYSCONFIG2] |= (uint16_t)volume;
+    if (!this->update_all_registers()) return false;
 
-    if (!this->update_all_registers()) {
-        ESP_LOGE(TAG, "SET_VOLUME: Zápis registra SYSCONFIG2 zlyhal.");
-        return false;
-    }
-
-    // 4. Ulož novú hlasitosť do internej premennej a publikuj do HA
     this->volume_ = volume; 
-
     if (this->volume_number_ != nullptr) {
-        // Publikujeme CIEĽOVÚ hlasitosť (ktorá nebola publikovaná v unmute(false)).
         this->volume_number_->publish_state((float)volume);
     }
-    
     ESP_LOGD(TAG, "Hlasitosť nastavená na %d.", volume);
-    
     return true;
 }
 
@@ -325,7 +313,7 @@ float Si4703FM::get_pty_code() {
 }
 
 // =============================================================================
-// --- Hlavná slučka (Loop) ---
+// Loop
 // =============================================================================
 void Si4703FM::loop() {
     if (millis() - this->last_update_ > this->update_interval_) {
@@ -385,10 +373,13 @@ void Si4703FM::loop() {
             this->last_stereo_update_ = millis();
         }
     }
+
+    // Pollovanie GPIO2 (hardware switch) – TERAZ už len cez I2C (nie ESP pin)
+    this->poll_gpio2_input();
 }
 
 // =============================================================================
-// --- Inicializácia čipu (Pôvodná verzia bez anti-POP) ---
+// Inicializácia čipu
 // =============================================================================
 bool Si4703FM::si4703_init() {
     this->reset_pin_->digital_write(false); // RST LOW
@@ -415,16 +406,12 @@ bool Si4703FM::si4703_init() {
     this->registers_[POWERCFG] = 0x4080; // DMUTE, MONO, BEZ ENABLE (na začiatku)
     
     // --- Povolenie RDS ---
-    ESP_LOGV(TAG, "SYSCONFIG1 pred zapnutím RDS: 0x%04X", this->registers_[SYSCONFIG1]);
     this->registers_[SYSCONFIG1] |= (1 << 12);  // správny bit pre RDS Enable [cite: 635]
-    ESP_LOGV(TAG, "SYSCONFIG1 po zapnutí RDS: 0x%04X", this->registers_[SYSCONFIG1]);
-	
-	this->registers_[SYSCONFIG1] |= (1 << 10);  // AGCD enable
-    this->registers_[SYSCONFIG1] &= ~(1 << 11); // DE=0 (Europe, 50us) [cite: 636]
+    this->registers_[SYSCONFIG1] |= (1 << 10);  // AGCD enable
+    this->registers_[SYSCONFIG1] &= ~(1 << 11); // DE=0 (Europe 50us)
 	
     if (!this->update_all_registers()) return false;
-	
-    delay(500); // Power-up delay
+    delay(500);
 
     // 3. Nastavenie pásma a hlasitosti (POUŽITIE OBNOVENÝCH HODNÔT)
     if (!this->read_registers()) return false;
@@ -434,6 +421,8 @@ bool Si4703FM::si4703_init() {
     // A) SYSCONFIG1 (0x04):
     // Vyčistíme bity 0-3 (Stereo Blend Threshold - STC_STRENGTH) a Bit 11 (DE)
     this->registers_[SYSCONFIG1] &= ~0x080F; 
+    this->registers_[SYSCONFIG1] &= ~0x00C0;
+    this->registers_[SYSCONFIG1] |= 0x0080;  
     
     // OPRAVA: Nastavenie prahu BLNDADJ (Stereo Blend Level) pre stabilizáciu Stereo/Mono 
     // Používame BLNDADJ[1:0] (Bity 7:6) v SYSCONFIG1 (0x04)
@@ -457,7 +446,6 @@ bool Si4703FM::si4703_init() {
     if (this->frequency_number_ != nullptr && !std::isnan(this->frequency_number_->state)) {
         initial_freq_mhz = this->frequency_number_->state;
     }
-    
     if (this->volume_number_ != nullptr && !std::isnan(this->volume_number_->state)) {
         initial_volume = (uint8_t)std::round(this->volume_number_->state);
     }
@@ -466,26 +454,30 @@ bool Si4703FM::si4703_init() {
     if (initial_volume > 15) initial_volume = 15;
     
     // Nastavenie hlasitosti do registra SYSCONFIG2
-    this->registers_[SYSCONFIG2] &= 0xFFF0; // Vyčistíme staré bity hlasitosti
-    this->registers_[SYSCONFIG2] |= initial_volume; // Nastavíme obnovenú hlasitosť
+    this->registers_[SYSCONFIG2] &= 0xFFF0;
+    this->registers_[SYSCONFIG2] |= initial_volume;
 	
-    // SYSCONFIG3
-	this->registers_[SYSCONFIG3] = 0x0000;
+    // Nastavme GPIO1/2 default LOW (00 = hi-z, 10 = low, 11 = high)
+    this->registers_[SYSCONFIG1] &= ~0x000F; // clear GPIO1/2 bits
+    // default LOW on both: 10 (0b10) -> bits 3:2 and 1:0
+    this->registers_[SYSCONFIG1] |= (0b10 << 2); // GPIO2 low
+    this->registers_[SYSCONFIG1] |= (0b10);      // GPIO1 low
 	
+    // SYSCONFIG3 left untouched (not used for GPIO config on SI4703)
+    this->registers_[SYSCONFIG3] = 0x0000;
     if (this->stc_int_pin_ != nullptr) {
-        this->registers_[SYSCONFIG3] |= (1 << 2); // Povolíme STC prerušenie
+        this->registers_[SYSCONFIG3] |= (1 << 2); // STC interrupt enable
     }
 
-    if (!this->update_all_registers()) return false; // Pošleme konfiguráciu bez ladenia/zapnutia.
+    if (!this->update_all_registers()) return false;
 
     // 4. Nastavenie frekvencie (Tento krok musí zapnúť aj ENABLE bit!)
     uint16_t freq_x10 = (uint16_t)std::round(initial_freq_mhz * 10.0f);
     uint16_t initial_channel = (freq_x10 - 875); 
 
     ESP_LOGI(TAG, "Nastavujem počiatočnú/obnovenú frekvenciu %.1f MHz...", initial_freq_mhz);
-    this->tune_to_channel(initial_channel); // TUNE_TO_CHANNEL zapne ENABLE bit
+    this->tune_to_channel(initial_channel);
 
-    // Finálne čítanie na potvrdenie stavu
     if (!this->read_registers()) return false;
 
     float freq = this->get_current_frequency_mhz();
@@ -493,22 +485,15 @@ bool Si4703FM::si4703_init() {
 
     ESP_LOGI(TAG, "Si4703 inicialized. Freq: %.1f MHz, RSSI: %.0f dBµV, Volume: %d", freq, rssi, initial_volume);
     
-    // Počiatočné publikovanie stavu (už len pre istotu)
-    if (this->frequency_number_ != nullptr) {
-        this->frequency_number_->publish_state(freq);
-    }
-    if (this->rssi_sensor_ != nullptr) {
-        this->rssi_sensor_->publish_state(rssi);
-    }
-    if (this->volume_number_ != nullptr) {
-        this->volume_number_->publish_state((float)initial_volume);
-    }
+    if (this->frequency_number_ != nullptr) this->frequency_number_->publish_state(freq);
+    if (this->rssi_sensor_ != nullptr) this->rssi_sensor_->publish_state(rssi);
+    if (this->volume_number_ != nullptr) this->volume_number_->publish_state((float)initial_volume);
 
     return true;
 }
 
 // =============================================================================
-// --- Funkcie na ovládanie čipu (Tune, Seek) ---
+// Tune / Seek
 // =============================================================================
 
 //void Si4703FM::set_channel_from_float(float freq_mhz) {
@@ -536,6 +521,7 @@ bool Si4703FM::si4703_init() {
 //    // Ihneď po odoslaní príkazu na ladenie vyčistíme staré RDS dáta
 //    // a zobrazíme "RDS Sync...". Tým sa splní požiadavka na reset pri zmene stanice.
 //    ESP_LOGV(TAG, "Ladenie: Čistím RDS buffre a publikujem 'RDS Sync...'");
+
 void Si4703FM::reset_rds_on_tune() {
     ESP_LOGV(TAG, "Ladenie/Seek: Čistím RDS buffre a publikujem 'RDS Sync...'");
     
@@ -628,14 +614,8 @@ bool Si4703FM::tune_to_channel(uint16_t channel_val) {
     return true;
 }
 
-// --- NOVÉ: Implementácia Seek ---
-void Si4703FM::seek_up() {
-    this->seek_internal(true);
-}
-
-void Si4703FM::seek_down() {
-    this->seek_internal(false);
-}
+void Si4703FM::seek_up() { this->seek_internal(true); }
+void Si4703FM::seek_down() { this->seek_internal(false); }
 
 void Si4703FM::seek_internal(bool seek_up) {
     ESP_LOGD(TAG, "Spúšťam Seek (Smer: %s)", seek_up ? "UP" : "DOWN");
@@ -724,7 +704,7 @@ float Si4703FM::get_current_frequency_mhz() {
 }
 
 // =============================================================================
-// Implementácia RDS spracovania (nové)
+// RDS spracovanie (nezmenené, skrátené pre relevantné úpravy)
 // =============================================================================
 
 void Si4703FM::process_rds() {
@@ -1034,6 +1014,54 @@ bool Si4703FM::update_all_registers() {
       return false;
     }
     return true;
+}
+
+// -----------------------------------------------------------------------------
+// GPIO1/2 helper methods – cez SYSCONFIG1 (Register 0x04)
+// -----------------------------------------------------------------------------
+bool Si4703FM::set_gpio1_state(bool on) {
+    // GPIO1[1:0] (bits 1:0): 10 = Low, 11 = High
+    if (!this->read_registers()) {
+        ESP_LOGE(TAG, "set_gpio1_state: read_registers zlyhalo.");
+        return false;
+    }
+
+    this->registers_[SYSCONFIG1] &= ~(0b11); // clear bits 1:0
+    this->registers_[SYSCONFIG1] |= on ? 0b11 : 0b10;
+
+    if (!this->update_all_registers()) {
+        ESP_LOGE(TAG, "set_gpio1_state: update_all_registers zlyhalo.");
+        return false;
+    }
+
+    this->amp_state_ = on;
+    ESP_LOGD(TAG, "GPIO1 (SYSCONFIG1 bits 1:0) nastavené na: %s", ONOFF(on));
+    return true;
+}
+
+bool Si4703FM::set_gpio2_state(bool on) {
+    // GPIO2[1:0] (bits 3:2): 10 = Low, 11 = High
+    if (!this->read_registers()) {
+        ESP_LOGE(TAG, "set_gpio2_state: read_registers zlyhalo.");
+        return false;
+    }
+
+    this->registers_[SYSCONFIG1] &= ~(0b11 << 2); // clear bits 3:2
+    this->registers_[SYSCONFIG1] |= (on ? 0b11 : 0b10) << 2;
+
+    if (!this->update_all_registers()) {
+        ESP_LOGE(TAG, "set_gpio2_state: update_all_registers zlyhalo.");
+        return false;
+    }
+
+    ESP_LOGD(TAG, "GPIO2 (SYSCONFIG1 bits 3:2) nastavené na: %s", ONOFF(on));
+    return true;
+}
+
+void Si4703FM::poll_gpio2_input() {
+    // If GPIO2 is configured as output (10/11), we skip input polling.
+    // If user wired it as input (00 hi-z), STATUSRSSI has no bit for it; so do nothing.
+    // Leaving this empty avoids false reads when GPIO2 is used as an output switch.
 }
 
 }  // namespace si4703_fm

@@ -23,32 +23,33 @@ static const uint8_t RDSB = 0x0D;
 static const uint8_t RDSC = 0x0E;
 static const uint8_t RDSD = 0x0F;
 
-// Definície registrov
-static const uint8_t POWERCFG = 0x02;
-static const uint8_t CHANNEL = 0x03;
+static const uint8_t POWERCFG   = 0x02;
+static const uint8_t CHANNEL    = 0x03;
 static const uint8_t SYSCONFIG1 = 0x04;
 static const uint8_t SYSCONFIG2 = 0x05;
 static const uint8_t SYSCONFIG3 = 0x06;
-static const uint8_t TEST1 = 0x07;
+static const uint8_t TEST1      = 0x07;
 static const uint8_t STATUSRSSI = 0x0A;
-static const uint8_t READCHANNEL = 0x0B;
+static const uint8_t READCHANNEL= 0x0B;
 
 // Bity, ktoré by mali byť v STATUSRSSI (0x0A)
 static const uint16_t RDSR = (1 << 15);  // Bit 15 - RDS Ready
-static const uint16_t RDSS = (1 << 11);  // Bit 11 - RDS Synchronized (Kľúčová oprava) 
-static const uint16_t STC = (1 << 14); // Seek/Tune Complete
-static const uint16_t SFBL = (1 << 13); // Seek/Tune Fail/Band Limit
+static const uint16_t RDSS = (1 << 11);  // Bit 11 - RDS Synchronized
+static const uint16_t STC  = (1 << 14);  // Seek/Tune Complete
+static const uint16_t SFBL = (1 << 13);  // Seek/Tune Fail/Band Limit
 
 // Ostatné bity z iných registrov:
-static const uint16_t RDY = (1 << 15); // Ready bit v STATUSRSSI
-static const uint16_t RDS = (1 << 12);    // Bit v SYSCONFIG1 (0x04) na zapnutie RDS
-static const uint16_t DMUTE = (1 << 14);  // Bit v POWERCFG (0x02) - Mute Disable
+static const uint16_t RDY   = (1 << 15); // Ready bit v STATUSRSSI
+static const uint16_t RDS   = (1 << 12); // Bit v SYSCONFIG1 (0x04) na zapnutie RDS
+static const uint16_t DMUTE = (1 << 14); // Bit v POWERCFG (0x02) - Mute Disable
 
 // Bity
 static const uint16_t TUNE = (1 << 15);
-//static const uint16_t STC = (1 << 14); // Seek/Tune Complete
 
-class Si4703FM; // Predbežná deklarácia
+// -----------------------------------------------------------------------------
+// Forward deklarácia
+// -----------------------------------------------------------------------------
+class Si4703FM;
 
 // -----------------------------------------------------------------------------
 // Switch triedy
@@ -57,9 +58,7 @@ class Si4703FM; // Predbežná deklarácia
 class Si4703PowerSwitch : public switch_::Switch {
 public:
     Si4703PowerSwitch(Si4703FM *parent) : parent_(parent) {}
-    // Plná deklarácia write_state
     void write_state(bool state) override; 
-
 protected:
     Si4703FM *parent_;
 };
@@ -67,11 +66,25 @@ protected:
 class Si4703MuteSwitch : public switch_::Switch {
 public:
     Si4703MuteSwitch(Si4703FM *parent) : parent_(parent) {}
-    // Plná deklarácia write_state
     void write_state(bool state) override; 
-
 protected:
     Si4703FM *parent_;
+};
+
+class Si4703AmpSwitch : public Component, public switch_::Switch {
+ public:
+  Si4703AmpSwitch(Si4703FM *parent) : parent_(parent) {}
+ protected:
+  void write_state(bool state) override;
+  Si4703FM *parent_;
+};
+
+class Si4703Gpio2Switch : public Component, public switch_::Switch {
+ public:
+  Si4703Gpio2Switch(Si4703FM *parent) : parent_(parent) {}
+ protected:
+  void write_state(bool state) override;
+  Si4703FM *parent_;
 };
 
 // -----------------------------------------------------------------------------
@@ -81,7 +94,6 @@ protected:
 class Si4703Frequency : public number::Number, public Component { 
 public:
     Si4703Frequency(Si4703FM *parent) : parent_(parent) {}
-    // Plná deklarácia setup a control
     void setup() override; 
     void control(float value) override; 
 protected:
@@ -91,7 +103,6 @@ protected:
 class Si4703Volume : public number::Number, public Component { 
 public:
     Si4703Volume(Si4703FM *parent) : parent_(parent) {}
-    // Plná deklarácia setup a control
     void setup() override; 
     void control(float value) override; 
 protected:
@@ -124,13 +135,21 @@ class Si4703TAIndicator : public binary_sensor::BinarySensor, public Component {
   Si4703FM *parent_{nullptr};
 };
 
+// NOVÉ: GPIO2 ako binárny vstup (hardware vypínač)
+class Si4703Gpio2Sensor : public binary_sensor::BinarySensor, public Component {
+ public:
+  Si4703Gpio2Sensor(Si4703FM *parent) : parent_(parent) {}
+ protected:
+  Si4703FM *parent_;
+};
+
 // =============================================================================
-// Button (Tlačidlo) triedy
+// Button triedy
 // =============================================================================
 class Si4703SeekUpButton : public button::Button, public Component {
  public:
   Si4703SeekUpButton(Si4703FM *parent) : parent_(parent) {}
-  void press_action() override; // Implementované v .cpp
+  void press_action() override;
  protected:
   Si4703FM *parent_{nullptr};
 };
@@ -138,7 +157,7 @@ class Si4703SeekUpButton : public button::Button, public Component {
 class Si4703SeekDownButton : public button::Button, public Component {
  public:
   Si4703SeekDownButton(Si4703FM *parent) : parent_(parent) {}
-  void press_action() override; // Implementované v .cpp
+  void press_action() override;
  protected:
   Si4703FM *parent_{nullptr};
 };
@@ -149,7 +168,7 @@ class Si4703SeekDownButton : public button::Button, public Component {
 
 class Si4703FM : public Component, public i2c::I2CDevice {
 public:
-  Si4703FM(i2c::I2CBus *parent_bus, GPIOPin *reset_pin, GPIOPin *stc_int_pin = nullptr);
+  Si4703FM(i2c::I2CBus *parent_bus, GPIOPin *reset_pin, GPIOPin *stc_int_pin = nullptr, GPIOPin *gpio1_pin = nullptr, GPIOPin *gpio2_pin = nullptr);
   
   void setup() override;
   void loop() override;
@@ -165,16 +184,21 @@ public:
   void set_volume_number(Si4703Volume *vol_num) { this->volume_number_ = vol_num; }
   void set_power_switch(Si4703PowerSwitch *power_sw) { this->power_switch_ = power_sw; }
   void set_mute_switch(Si4703MuteSwitch *mute_sw) { this->mute_switch_ = mute_sw; } 
+  void set_amp_switch(Si4703AmpSwitch *amp_sw) { this->amp_switch_ = amp_sw; }
+  void set_gpio2_switch(Si4703Gpio2Switch *sw) { this->gpio2_switch_ = sw; }
   void set_rds_text_sensor(text_sensor::TextSensor *rds_text_sensor) { this->rds_text_sensor_ = rds_text_sensor; } 
   void set_rds_ps_sensor(text_sensor::TextSensor *rds_ps_sensor) { this->rds_ps_sensor_ = rds_ps_sensor; }
   void set_rds_ct_sensor(text_sensor::TextSensor *rds_ct_sensor) { this->rds_ct_sensor_ = rds_ct_sensor; }
   void set_stereo_indicator_sensor(binary_sensor::BinarySensor *s) { this->stereo_indicator_sensor_ = s; }
   void set_tp_indicator_sensor(binary_sensor::BinarySensor *s) { this->tp_indicator_sensor_ = s; }
   void set_ta_indicator_sensor(binary_sensor::BinarySensor *s) { this->ta_indicator_sensor_ = s; }
+  void set_amp(bool on);   // GPIO1 Control (wrapper)
+  void set_gpio2(bool on); // GPIO2 Control (wrapper)
   void set_seek_up_button(button::Button *btn) { this->seek_up_button_ = btn; }
   void set_seek_down_button(button::Button *btn) { this->seek_down_button_ = btn; }
   
   void publish_stereo_status();
+  void publish_tp_ta_status();
 
   // Interval aktualizácie
   void set_update_interval(uint32_t update_interval) { this->update_interval_ = update_interval; }
@@ -189,7 +213,6 @@ public:
   float get_pty_code();
   bool set_volume(uint8_t volume); 
   uint8_t get_volume(); 
-  void publish_tp_ta_status();
   
   bool turn_on();
   bool turn_off();
@@ -203,12 +226,18 @@ public:
 
   bool si4703_init();
   bool update_all_registers();
-  
   bool read_registers();
+
+  // GPIO1/2 cez I2C
+  bool set_gpio1_state(bool on); // nastaví GPIO1 výstup v registroch (SYSCONFIG1 bits 1:0)
+  bool set_gpio2_state(bool on); // nastaví GPIO2 výstup v registroch (SYSCONFIG1 bits 3:2)
+  bool get_amp_pin_state() const { return this->amp_state_; }
 
 protected:
   GPIOPin *reset_pin_;
   GPIOPin *stc_int_pin_;
+  GPIOPin *gpio1_pin_{nullptr};
+  GPIOPin *gpio2_pin_{nullptr};
 
   uint16_t registers_[16] = {0};
   int volume_ = 8;
@@ -217,6 +246,7 @@ protected:
   // --- Premenné pre RDS Program Service (PS) ---
   char rds_ps_buffer_[9] = {'\0'}; // PS má max 8 znakov + '\0'
   uint8_t rds_ps_last_ab_flag_ = 0;
+
   // --- Premenné pre RDS Radio Text (RT) ---
   char rds_rt_buffer_[65]; 
   uint8_t rds_rt_last_ab_flag_ = 0; 
@@ -243,9 +273,12 @@ protected:
   Si4703Volume *volume_number_ = nullptr; 
   Si4703PowerSwitch *power_switch_ = nullptr;
   Si4703MuteSwitch *mute_switch_ = nullptr; 
+  Si4703AmpSwitch *amp_switch_ = nullptr;
+  Si4703Gpio2Switch *gpio2_switch_ = nullptr;
   binary_sensor::BinarySensor *stereo_indicator_sensor_{nullptr};
   binary_sensor::BinarySensor *tp_indicator_sensor_{nullptr};
   binary_sensor::BinarySensor *ta_indicator_sensor_{nullptr};
+  binary_sensor::BinarySensor *gpio2_input_sensor_{nullptr};
   text_sensor::TextSensor *rds_text_sensor_{nullptr};
   text_sensor::TextSensor *rds_ps_sensor_{nullptr};
   text_sensor::TextSensor *rds_ct_sensor_{nullptr};
@@ -257,16 +290,22 @@ protected:
   uint32_t last_stereo_update_ = 0;
   static const uint32_t STEREO_UPDATE_INTERVAL = 300;
 
+  bool gpio2_last_state_ = false;
+  uint32_t gpio2_last_change_ = 0;
+  static const uint32_t GPIO2_DEBOUNCE_MS = 50;
+
+  bool amp_state_ = false;
+
   bool tune_to_channel(uint16_t channel_val);
   uint16_t get_channel_value();
   void process_rds_data(); 
-    
   void process_rds();
   void decode_rds_data(uint16_t block_a, uint16_t block_b, uint16_t block_c, uint16_t block_d);
   
   void seek_internal(bool seek_up);
   void reset_rds_on_tune();
   
+  void poll_gpio2_input();
 };
 
 }  // namespace si4703_fm

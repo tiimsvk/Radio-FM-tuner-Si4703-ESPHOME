@@ -5,12 +5,19 @@ import esphome.config_validation as cv
 from esphome.components import switch
 from esphome.const import CONF_ID, CONF_NAME, CONF_ICON, ENTITY_CATEGORY_CONFIG 
 
-# Importujeme hlavné triedy z __init__.py
-from . import Si4703FM, Si4703PowerSwitch, Si4703MuteSwitch, CONF_SI4703_FM_ID
+from . import (
+    Si4703FM,
+    Si4703PowerSwitch,
+    Si4703MuteSwitch,
+    Si4703AmpSwitch,
+    Si4703Gpio2Switch,
+    CONF_SI4703_FM_ID,
+)
 
-# Kľúče pre YAML
 CONF_POWER_SWITCH = "power_switch"
-CONF_MUTE_SWITCH = "mute_switch" # <--- NOVÉ
+CONF_MUTE_SWITCH = "mute_switch"
+CONF_AMP_SWITCH = "amp_switch"
+CONF_GPIO2_SWITCH = "gpio2_switch"
 
 # --- Schéma pre Power Switch (LEN pre entitu, bez ID hubu) ---
 POWER_SCHEMA = switch.switch_schema(
@@ -35,15 +42,33 @@ MUTE_SCHEMA = switch.switch_schema(
     }
 ).extend(cv.COMPONENT_SCHEMA)
 
-# --- Hlavná schéma pre platformu 'switch.si4703_fm' (S ID hubu na hornej úrovni) ---
+AMP_SCHEMA = switch.switch_schema(
+    Si4703AmpSwitch,
+    entity_category=ENTITY_CATEGORY_CONFIG,
+).extend(
+    {
+        cv.Optional(CONF_NAME, default="Zosilňovač (GPIO1)"): cv.string,
+        cv.Optional(CONF_ICON, default="mdi:amplifier"): cv.icon,
+    }
+).extend(cv.COMPONENT_SCHEMA)
+
+GPIO2_SCHEMA = switch.switch_schema(
+    Si4703Gpio2Switch,
+    entity_category=ENTITY_CATEGORY_CONFIG,
+).extend(
+    {
+        cv.Optional(CONF_NAME, default="GPIO2 Prepínač"): cv.string,
+        cv.Optional(CONF_ICON, default="mdi:toggle-switch"): cv.icon,
+    }
+).extend(cv.COMPONENT_SCHEMA)
+
 CONFIG_SCHEMA = cv.Schema(
     {
-        # NOVÉ: ID hubu je teraz povinné na hornej úrovni
         cv.Required(CONF_SI4703_FM_ID): cv.use_id(Si4703FM),
-        
-        # Power switch je teraz definovaný ako list alebo len jedna entita
         cv.Required(CONF_POWER_SWITCH): POWER_SCHEMA,
         cv.Optional(CONF_MUTE_SWITCH): MUTE_SCHEMA,
+        cv.Optional(CONF_AMP_SWITCH): AMP_SCHEMA,
+        cv.Optional(CONF_GPIO2_SWITCH): GPIO2_SCHEMA,
     }
 ).extend(cv.COMPONENT_SCHEMA) # Predĺžime o základnú komponentnú schému
 
@@ -51,7 +76,7 @@ CONFIG_SCHEMA = cv.Schema(
 async def to_code(config):
     hub = await cg.get_variable(config[CONF_SI4703_FM_ID])
 
-    # Kód pre Power Switch
+    # Power Switch
     conf = config[CONF_POWER_SWITCH]
     var = cg.new_Pvariable(conf[CONF_ID], hub)
     await switch.register_switch(var, conf) 
@@ -63,3 +88,15 @@ async def to_code(config):
         var = cg.new_Pvariable(conf[CONF_ID], hub)
         await switch.register_switch(var, conf)
         cg.add(hub.set_mute_switch(var))
+
+    if CONF_AMP_SWITCH in config:
+        conf = config[CONF_AMP_SWITCH]
+        var = cg.new_Pvariable(conf[CONF_ID], hub)
+        await switch.register_switch(var, conf)
+        cg.add(hub.set_amp_switch(var))
+
+    if CONF_GPIO2_SWITCH in config:
+        conf = config[CONF_GPIO2_SWITCH]
+        var = cg.new_Pvariable(conf[CONF_ID], hub)
+        await switch.register_switch(var, conf)
+        cg.add(hub.set_gpio2_switch(var))
